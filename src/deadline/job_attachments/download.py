@@ -8,6 +8,8 @@ import io
 import os
 import re
 import time
+import glob
+import time
 from collections import defaultdict
 from datetime import datetime
 from itertools import chain
@@ -519,9 +521,48 @@ def download_file(
         raise AssetSyncError(e) from e
 
     download_logger.debug(f"Downloaded {file.path} to {str(local_file_name)}")
-    os.utime(local_file_name, (modified_time_override, modified_time_override))  # type: ignore[arg-type]
+    return (file_bytes, local_file_name, modified_time_override)
+"""
+    try:
+        if os.path.exists(local_file_name):
+            download_logger.error(f"File Exists {local_file_name}")
+        else:
+            download_logger.error(f"File NOT exist {local_file_name}")
+        
+        if os.path.exists(local_file_name):
+            download_logger.error(f"File Exists2 {local_file_name}")
+        else:
+            download_logger.error(f"File NOT exist2 {local_file_name}")
+        #os.utime(local_file_name, (modified_time_override, modified_time_override))  # type: ignore[arg-type]
+    except:
+        download_logger.error("TIMESTAMP FAILED")
 
+    if os.path.exists(local_file_name):
+        download_logger.error(f"xxx - File Exists {local_file_name}")
+    else:
+        download_logger.error(f"xxx - File NOT exist {local_file_name}")
+    files = glob.glob("/Users/leongdl/Downloads/blender-3.6-splash/*", recursive=True)
+    if os.path.exists(local_file_name):
+        download_logger.error(f"x - File Exists {local_file_name}")
+    else:
+        download_logger.error(f"x - File NOT exist {local_file_name}")
+    download_logger.error(f"looking for {local_file_name}")
+    download_logger.error(f"Files found {files}")
+    if os.path.exists(local_file_name):
+        download_logger.error(f"2 - File Exists {local_file_name}")
+    else:
+        download_logger.error(f"2 - File NOT exist {local_file_name}")
+    time.sleep(1)
+    if os.path.exists(local_file_name):
+        download_logger.error(f"3 - File Exists {local_file_name}")
+    else:
+        download_logger.error(f"3 - File NOT exist {local_file_name}")
+    #files = glob.glob("/Users/leongdl/Downloads/blender-3.6-splash/*", recursive=True)
+    #download_logger.error(f"After Sleep Files found {files}")
+    os.utime(local_file_name, (modified_time_override, modified_time_override))  # type: ignore[arg-type]
     return (file_bytes, local_file_name)
+"""
+
 
 
 def _download_files_parallel(
@@ -562,9 +603,14 @@ def _download_files_parallel(
         }
         # surfaces any exceptions in the thread
         for future in concurrent.futures.as_completed(futures):
-            (file_bytes, local_file_name) = future.result()
+            (file_bytes, local_file_name, modified_time_override) = future.result()
             if local_file_name:
                 downloaded_file_names.append(str(local_file_name.resolve()))
+                try:
+                    os.utime(local_file_name, (modified_time_override, modified_time_override))  # type: ignore[arg-type]
+                    download_logger.error("TIME STAMP SUCCESS")
+                except:
+                    download_logger.error("TIME STAMP FAILED")
                 if progress_tracker:
                     progress_tracker.increase_processed(1, 0)
                     progress_tracker.report_progress()
@@ -572,6 +618,7 @@ def _download_files_parallel(
                 if progress_tracker:
                     progress_tracker.increase_skipped(1, file_bytes)
                     progress_tracker.report_progress()
+
 
     # to report progress 100% at the end
     if progress_tracker:

@@ -7,8 +7,9 @@ from functools import lru_cache
 from typing import Optional
 
 import boto3
+from boto3.s3.transfer import create_crt_transfer_manager, create_transfer_manager
+
 import botocore
-from boto3.s3.transfer import create_transfer_manager
 from botocore.client import BaseClient, Config
 
 from deadline.client.config import config_file
@@ -24,6 +25,8 @@ from .aws_config import (
 
 MAX_SIZE_CACHE = 128
 
+import logging
+boto3.set_stream_logger('boto3.s3', logging.INFO)
 
 # Should create a new botocore session since botocore session may be modified by boto3 session/client using it
 # https://github.com/boto/boto3/blob/61de529b5f9a7bdcc8c76debb472a7f934d048e6/boto3/session.py#L79
@@ -104,6 +107,19 @@ def get_s3_max_pool_connections() -> int:
 @lru_cache(maxsize=MAX_SIZE_CACHE)
 def get_s3_transfer_manager(s3_client: BaseClient):
     transfer_config = boto3.s3.transfer.TransferConfig()
+    
+    from botocore.compat import HAS_CRT
+    print(f"**** Are we running with boto3 CRT {HAS_CRT}")
+    boto3.set_stream_logger('boto3.s3', logging.DEBUG)
+
+
+    crt_transfer_manager = create_crt_transfer_manager(client=s3_client, config=transfer_config)
+    if crt_transfer_manager:
+        print(f"**** RUNNING WITH CRT")
+        return crt_transfer_manager
+
+    # Fallback to regular transfer manager if CRT transfer manager does not support the configuration, which can happen if the client
+    # and bucket are in different regions.
     return create_transfer_manager(client=s3_client, config=transfer_config)
 
 

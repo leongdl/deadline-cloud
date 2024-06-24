@@ -14,7 +14,7 @@ import sys
 from typing import Optional, Union
 import datetime
 from typing import Any
-
+import traceback
 import click
 from botocore.exceptions import ClientError
 
@@ -644,6 +644,7 @@ def job_download_output(step_id, task_id, output, **args):
             click.echo(_get_json_line(JSON_MSG_TYPE_ERROR, error_one_liner))
             sys.exit(1)
         else:
+            traceback.print_exc() 
             raise DeadlineOperationError(f"Failed to download output:\n{e}") from e
 
 
