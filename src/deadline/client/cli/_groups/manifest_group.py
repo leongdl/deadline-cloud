@@ -41,15 +41,15 @@ import boto3
 from botocore.client import BaseClient
 
 
-@click.group(name="asset")
+@click.group(name="manifest")
 @_handle_error
-def cli_asset():
+def cli_manifest():
     """
     Commands to work with AWS Deadline Cloud Job Attachments.
     """
 
 
-@cli_asset.command(name="snapshot")
+@cli_manifest.command(name="snapshot")
 @click.option("--root-dir", required=True, help="The root directory to snapshot. ")
 @click.option(
     "--manifest-out", default=None, help="Destination path to directory where manifest is created. "
@@ -123,7 +123,7 @@ def asset_snapshot(root_dir: str, manifest_out: str, recursive: bool, **args):
     click.echo(f"Manifest created at {manifest_out}\n")
 
 
-@cli_asset.command(name="upload")
+@cli_manifest.command(name="upload")
 @click.option(
     "--root-dir",
     help="The root directory of assets to upload. Defaults to the parent directory of --manifest-dir if not specified. ",
@@ -243,7 +243,7 @@ def asset_upload(root_dir: str, manifest_dir: str, update: bool, **args):
     click.echo(f"Upload of {asset_root_dir} complete. \n")
 
 
-@cli_asset.command(name="diff")
+@cli_manifest.command(name="diff")
 @click.option("--root-dir", help="The root directory to compare changes to. ")
 @click.option(
     "--manifest-dir",
@@ -305,7 +305,7 @@ def asset_diff(root_dir: str, manifest_dir: str, raw: bool, **args):
         pretty_print(file_status_list=differences)
 
 
-@cli_asset.command(name="download")
+@cli_manifest.command(name="download")
 @click.option(
     "--manifest-out",
     required=True,
