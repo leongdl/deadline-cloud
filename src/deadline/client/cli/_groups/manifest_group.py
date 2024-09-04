@@ -226,12 +226,23 @@ def manifest_diff(root: str, manifest: str, glob: str, json: bool, **args):
         local_manifest_object = decode_manifest(manifest_data_str)
 
     # compare manifests
-    differences: List[tuple] = compare_manifest(
+    differences: List[tuple[FileStatus, BaseManifestPath]] = compare_manifest(
         reference_manifest=local_manifest_object, compare_manifest=directory_manifest_object
     )
 
     if json:
-        logger.json(f"{differences}")
+        # Todo, make this a data structure that has a nice to_json
+        output: dict = {"modified":[], "new": [], "deleted": []}
+
+        for item in differences:
+            if item[0] == FileStatus.MODIFIED:
+                output["modified"].append(item[1].path)
+            elif item[0] == FileStatus.NEW:
+                output["new"].append(item[1].path)
+            elif item[0] == FileStatus.DELETED:
+                output["deleted"].append(item[1].path)
+
+        logger.json(output, indent=4)
     else:
         logger.echo(f"\n{root}")
         pretty_print(file_status_list=differences, logger=logger)

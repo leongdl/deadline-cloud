@@ -31,6 +31,7 @@ class ClickLogger:
         nl: bool = True,
         err: bool = False,
         color: t.Optional[bool] = None,
+        indent = None,
     ):
         if self._is_json:
-            click.echo(json.dumps(message), file, nl, err, color)
+            click.echo(json.dumps(obj=message, indent=indent), file, nl, err, color)
