@@ -4,6 +4,11 @@ import typing as t
 
 
 class ClickLogger:
+    """
+    Wrapper around click that is JSON aware. Users can instantiate this as a
+    replacement for using `click.echo`. A helper JSON function is also provided
+    to output JSON.
+    """
 
     def __init__(self, is_json: bool):
         self._is_json = is_json

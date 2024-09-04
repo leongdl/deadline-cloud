@@ -26,7 +26,10 @@ from deadline.job_attachments._aws.aws_clients import (
     get_s3_client,
     get_s3_transfer_manager,
 )
-from deadline.job_attachments.asset_manifests.base_manifest import BaseAssetManifest
+from deadline.job_attachments.asset_manifests.base_manifest import (
+    BaseAssetManifest,
+    BaseManifestPath,
+)
 from deadline.job_attachments.asset_manifests.decode import decode_manifest
 from deadline.job_attachments.caches import HashCache
 from deadline.job_attachments.download import download_file_with_s3_key
@@ -68,11 +71,11 @@ def cli_manifest():
     default=None,
     help="Glob include and exclude of directory and file regex to include in the manifest.",
 )
-@click.option("--diff", default=None, is_flag=True, help="Asset Manifest to diff against.")
+@click.option("--diff", default=None, help="Asset Manifest to diff against.")
 @click.option("--json", default=None, is_flag=True, help="Output is printed as JSON for scripting")
 @_handle_error
 def manifest_snapshot(
-    root: str, destination: str, name: str, glob: str, diff: bool, json: bool, **args
+    root: str, destination: str, name: str, glob: str, diff: str, json: bool, **args
 ):
     """
     Creates manifest of files specified by root directory.
@@ -95,11 +98,16 @@ def manifest_snapshot(
     asset_manager = S3AssetManager(
         farm_id=" ", queue_id=" ", job_attachment_settings=JobAttachmentS3Settings(" ", " ")
     )
-    hash_callback_manager = _ProgressBarCallbackManager(length=100, label="Hashing Attachments")
+
+    hash_callback_manager: _ProgressBarCallbackManager = None
+    if not json:
+        hash_callback_manager = _ProgressBarCallbackManager(length=100, label="Hashing Attachments")
 
     upload_group = asset_manager.prepare_paths_for_upload(
         input_paths=inputs, output_paths=[root], referenced_paths=[]
     )
+    assert len(upload_group.asset_groups) == 1
+
     if upload_group.asset_groups:
         _, manifests = api.hash_attachments(
             asset_manager=asset_manager,
@@ -107,13 +115,41 @@ def manifest_snapshot(
             total_input_files=upload_group.total_input_files,
             total_input_bytes=upload_group.total_input_bytes,
             print_function_callback=logger.echo,
-            hashing_progress_callback=hash_callback_manager.callback,
+            hashing_progress_callback=hash_callback_manager.callback if not json else None,
         )
+    # This is a hard failure, we are snapshotting 1 directory.
+    assert len(manifests) == 1
+    output_manifest = manifests[0].asset_manifest
+
+    # If this is a diff manifest, load the supplied manifest file.
+    if diff:
+        # Parse local manifest
+        with open(diff) as source_diff:
+            source_manifest_str = source_diff.read()
+            source_manifest = decode_manifest(source_manifest_str)
+
+        # Get the differences
+        changed_paths = list[str]
+        differences: list[tuple[FileStatus, BaseManifestPath]] = compare_manifest(
+            source_manifest, output_manifest
+        )
+        for diff_item in differences:
+            if diff_item[0] == FileStatus.MODIFIED or diff_item[0] == FileStatus.NEW:
+                changed_paths.append(diff_item[1].path)
+
+        # Since the files are already hashed, we can easily re-use has_attachments to remake a diff manifest.
+        _, diff_manifests = api.hash_attachments(
+            asset_manager=asset_manager,
+            asset_groups=upload_group.asset_groups,
+            total_input_files=upload_group.total_input_files,
+            total_input_bytes=upload_group.total_input_bytes,
+            print_function_callback=logger.echo,
+            hashing_progress_callback=hash_callback_manager.callback if not json else None,
+        )
+        output_manifest = manifests[0].asset_manifest
 
     # Write created manifest into local file, at the specified location at destination
-    for asset_root_manifests in manifests:
-        if asset_root_manifests.asset_manifest is None:
-            continue
+    if output_manifest is not None:
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
         manifest_name = name if name else root.replace("/", "_")
@@ -122,12 +158,17 @@ def manifest_snapshot(
         local_manifest_file = Path(destination, manifest_name)
         local_manifest_file.parent.mkdir(parents=True, exist_ok=True)
         with open(local_manifest_file, "w") as file:
-            file.write(asset_root_manifests.asset_manifest.encode())
+            file.write(output_manifest.encode())
 
-    # Output results.
-    logger.echo(f"Manifest Generated at {destination}{manifest_name}\n")
-    json_output: dict = {"manifest": f"{destination}{manifest_name}"}
-    logger.json(json_output)
+        # Output results.
+        logger.echo(f"Manifest Generated at {destination}{manifest_name}\n")
+        json_output: dict = {"manifest": f"{destination}{manifest_name}"}
+        logger.json(json_output)
+    else:
+        # No manifest generated.
+        logger.echo("No manifest generated")
+        json_output: dict = {}
+        logger.json(json_output)
 
 
 @cli_manifest.command(name="diff")
