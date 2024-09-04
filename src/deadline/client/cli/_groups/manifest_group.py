@@ -91,8 +91,8 @@ def manifest_snapshot(
         logger.echo(f"Manifest creation path defaulted to {root} \n")
 
     inputs = []
-    for root, dirs, files in os.walk(root):
-        inputs.extend([str(os.path.join(root, file)) for file in files])
+    for roots, dirs, files in os.walk(root):
+        inputs.extend([str(os.path.join(roots, file)) for file in files])
 
     # Placeholder Asset Manager
     asset_manager = S3AssetManager(
@@ -129,24 +129,29 @@ def manifest_snapshot(
             source_manifest = decode_manifest(source_manifest_str)
 
         # Get the differences
-        changed_paths = list[str]
+        changed_paths: list[str] = []
         differences: list[tuple[FileStatus, BaseManifestPath]] = compare_manifest(
             source_manifest, output_manifest
         )
         for diff_item in differences:
             if diff_item[0] == FileStatus.MODIFIED or diff_item[0] == FileStatus.NEW:
-                changed_paths.append(diff_item[1].path)
+                full_diff_path = f"{full_diff_path}/{diff_item[1].path}"
+                changed_paths.append(full_diff_path)
+                logger.echo(f"Found difference at: {full_diff_path}, Status: {diff_item[0]}")
 
         # Since the files are already hashed, we can easily re-use has_attachments to remake a diff manifest.
+        diff_group = asset_manager.prepare_paths_for_upload(
+            input_paths=changed_paths, output_paths=[root], referenced_paths=[]
+        )
         _, diff_manifests = api.hash_attachments(
             asset_manager=asset_manager,
-            asset_groups=upload_group.asset_groups,
-            total_input_files=upload_group.total_input_files,
-            total_input_bytes=upload_group.total_input_bytes,
+            asset_groups=diff_group.asset_groups,
+            total_input_files=diff_group.total_input_files,
+            total_input_bytes=diff_group.total_input_bytes,
             print_function_callback=logger.echo,
             hashing_progress_callback=hash_callback_manager.callback if not json else None,
         )
-        output_manifest = manifests[0].asset_manifest
+        output_manifest = diff_manifests[0].asset_manifest
 
     # Write created manifest into local file, at the specified location at destination
     if output_manifest is not None:
@@ -234,6 +239,7 @@ def manifest_diff(root: str, manifest: str, glob: str, json: bool, **args):
 
 @cli_manifest.command(name="download")
 @click.argument("download_dir")
+@click.option("--profile", help="The AWS profile to use.")
 @click.option("--job-id", required=True, help="The AWS Deadline Cloud Job to get. ")
 @click.option("--step-id", help="The AWS Deadline Cloud Step to get. ")
 @click.option("--farm-id", help="The AWS Deadline Cloud Farm to use. ")
@@ -242,6 +248,7 @@ def manifest_diff(root: str, manifest: str, glob: str, json: bool, **args):
 @_handle_error
 def manifest_download(
     download_dir: str,
+    profile: str,
     job_id: str,
     step_id: str,
     json: bool,
