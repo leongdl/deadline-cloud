@@ -310,6 +310,10 @@ def manifest_download(
     s3_client: BaseClient = get_s3_client(session=queue_role_session)
     transfer_manager = get_s3_transfer_manager(s3_client=s3_client)
 
+    # Capture a list of success and failed to download files for JSON output.
+    successful_downloads: list[tuple[str,str]] = []
+    failed_downloads: list[str] = []
+
     # download each input_manifest_path
     for input_manifest in input_manifest_paths:
         local_file_name = Path(download_dir, input_manifest[1].replace("/", "-") + ".manifest")
@@ -325,11 +329,39 @@ def manifest_download(
         if result is not None:
             # transfer_path = result.meta.call_args.fileobj  # type: ignore[attr-defined]
             # file_size = result.meta.size  # type: ignore[attr-defined]
+
             logger.echo(f"\nDownloaded manifest file to {local_file_name}.")
+            # I don't like this output structure, how can we make it better?
+            successful_downloads.append((input_manifest[0], local_file_name.absolute().as_posix()))
         else:
             logger.echo(
                 f"\nFailed to download file with S3 key '{input_manifest[0]}' from bucket '{bucket_name}'"
             )
+            failed_downloads.append(input_manifest[0])
+    
+    # Now also handle step-step dependencies
+    # TODO: Merge manifests by root.
+    # TODO: Filter outputs by path
+    # TODO: Merge all manifests by root.
+    if step_id is not None:
+        nextToken = ""
+        step_dep_response = deadline.list_step_dependencies(
+            farmId=farm_id,
+            queueId=queue_id,
+            jobId=job_id,
+            stepId=step_id,
+            nextToken=nextToken,
+        )
+
+        for step in step_dep_response['dependencies']:
+            logger.echo(f"Found Step-Step dependency. {step['stepId']}")
+
+    # JSON output at the end.
+    output_json = {
+        "downloaded": successful_downloads,
+        "failed": failed_downloads
+    }
+    logger.json(output_json)
 
 
 def read_local_manifest(manifest: str) -> BaseAssetManifest:
