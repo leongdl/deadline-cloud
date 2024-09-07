@@ -5,6 +5,7 @@ from hashlib import shake_256
 from pathlib import Path
 from typing import Tuple, Union
 import uuid
+import pathlib
 
 
 __all__ = [
@@ -86,3 +87,19 @@ def _is_relative_to(path1: Union[Path, str], path2: Union[Path, str]) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _glob_paths(path: str, include: str="**/*", exclude:str=None) -> list[str]:
+    """
+    Glob routine that supports Unix style pathname pattern expansion for includes and excludes.
+    path: Root path to glob.
+    include: Optional, pattern syntax for files to include.
+    exlucde: Optional, pattern syntax for files to exclude.
+    """
+    include_files = [path.as_posix() if path.is_file() else None for path in pathlib.Path(path).glob(include)]
+    include_files = list(filter(None, include_files))
+    if exclude:
+        exclude_files = [path.as_posix() if path.is_file() else None for path in pathlib.Path(path).glob(exclude)]
+        exclude_files = list(filter(None, exclude_files))
+        include_files = list(set(include_files) - set(exclude_files))
+    return include_files

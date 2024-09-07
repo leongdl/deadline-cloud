@@ -26,6 +26,7 @@ from deadline.job_attachments._aws.aws_clients import (
     get_s3_client,
     get_s3_transfer_manager,
 )
+from deadline.job_attachments._utils import _glob_paths
 from deadline.job_attachments.asset_manifests.base_manifest import (
     BaseAssetManifest,
     BaseManifestPath,
@@ -91,9 +92,8 @@ def manifest_snapshot(
         logger.echo(f"Manifest creation path defaulted to {root} \n")
 
     inputs = []
-    for roots, dirs, files in os.walk(root):
-        inputs.extend([str(os.path.join(roots, file)) for file in files])
-
+    inputs = _glob_paths(root)
+    
     # Placeholder Asset Manager
     asset_manager = S3AssetManager(
         farm_id=" ", queue_id=" ", job_attachment_settings=JobAttachmentS3Settings(" ", " ")
@@ -343,6 +343,7 @@ def manifest_download(
     # TODO: Merge manifests by root.
     # TODO: Filter outputs by path
     # TODO: Merge all manifests by root.
+    # SHARE this code with manifest sync_inputs work from Job run as user project!
     if step_id is not None:
         nextToken = ""
         step_dep_response = deadline.list_step_dependencies(
