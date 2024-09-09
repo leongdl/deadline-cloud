@@ -10,6 +10,7 @@ All the `deadline asset` commands:
 from __future__ import annotations
 
 import concurrent.futures
+import dataclasses
 import datetime
 import glob
 import logging
@@ -38,6 +39,7 @@ from deadline.job_attachments.models import (
     S3_MANIFEST_FOLDER_NAME,
     AssetRootManifest,
     JobAttachmentS3Settings,
+    ManifestDiff,
 )
 from deadline.job_attachments.upload import FileStatus, S3AssetManager
 
@@ -158,6 +160,7 @@ def manifest_snapshot(
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
         manifest_name = name if name else root.replace("/", "_")
+        manifest_name = manifest_name[1:] if manifest_name[0] == '_' else manifest_name
         manifest_name = f"{manifest_name}-{timestamp}.manifest"
 
         local_manifest_file = Path(destination, manifest_name)
@@ -231,18 +234,17 @@ def manifest_diff(root: str, manifest: str, glob: str, json: bool, **args):
     )
 
     if json:
-        # Todo, make this a data structure that has a nice to_json
-        output: dict = {"modified":[], "new": [], "deleted": []}
+        output: ManifestDiff = ManifestDiff()
 
         for item in differences:
             if item[0] == FileStatus.MODIFIED:
-                output["modified"].append(item[1].path)
+                output.modified.append(item[1].path)
             elif item[0] == FileStatus.NEW:
-                output["new"].append(item[1].path)
+                output.new.append(item[1].path)
             elif item[0] == FileStatus.DELETED:
-                output["deleted"].append(item[1].path)
+                output.deleted.append(item[1].path)
 
-        logger.json(output, indent=4)
+        logger.json(dataclasses.asdict(output), indent=4)
     else:
         logger.echo(f"\n{root}")
         pretty_print(file_status_list=differences, logger=logger)

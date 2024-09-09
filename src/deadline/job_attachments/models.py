@@ -330,3 +330,20 @@ class FileConflictResolution(Enum):
     SKIP = 1
     OVERWRITE = 2
     CREATE_COPY = 3
+
+
+@dataclass
+class GlobConfig:
+    """Include and Exclude configuration for glob input files"""
+    include_glob: List[str] = field(default_factory=["**/*"])
+    exclude_glob: List[str] = field(default_factory=list)
+
+    INCLUDE = "include"
+    EXCLUDE = "exclude"
+
+
+@dataclass
+class ManifestDiff:
+    new: List[str] = field(default_factory=list)
+    modified: List[str] = field(default_factory=list)
+    deleted: List[str] = field(default_factory=list)
