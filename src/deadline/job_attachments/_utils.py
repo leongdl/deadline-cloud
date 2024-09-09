@@ -3,7 +3,7 @@
 import datetime
 from hashlib import shake_256
 from pathlib import Path
-from typing import Tuple, Union
+from typing import List, Tuple, Union
 import uuid
 import pathlib
 
@@ -89,7 +89,7 @@ def _is_relative_to(path1: Union[Path, str], path2: Union[Path, str]) -> bool:
         return False
 
 
-def _glob_paths(path: str, include: str="**/*", exclude:str=None) -> list[str]:
+def _glob_paths(path: str, include: List[str]=["**/*"], exclude:List[str]=None) -> list[str]:
     """
     Glob routine that supports Unix style pathname pattern expansion for includes and excludes.
     path: Root path to glob.

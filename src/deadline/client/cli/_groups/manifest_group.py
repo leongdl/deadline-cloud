@@ -209,11 +209,7 @@ def manifest_diff(root: str, manifest: str, glob: str, json: bool, **args):
     )
 
     # get inputs of directory
-    input_paths = []
-    for root_dir, dirs, files in os.walk(root):
-        for filename in files:
-            file_path = os.path.join(root_dir, filename)
-            input_paths.append(Path(file_path))
+    input_paths = _glob_paths(root)
 
     # hash and create manifest of local directory
     cache_config = config_file.get_cache_directory()
