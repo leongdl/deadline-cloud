@@ -89,17 +89,34 @@ def _is_relative_to(path1: Union[Path, str], path2: Union[Path, str]) -> bool:
         return False
 
 
-def _glob_paths(path: str, include: List[str]=["**/*"], exclude:List[str]=None) -> list[str]:
+def _glob_paths(path: str, include: List[str] = ["**/*"], exclude: List[str] = None) -> list[str]:
     """
     Glob routine that supports Unix style pathname pattern expansion for includes and excludes.
     path: Root path to glob.
     include: Optional, pattern syntax for files to include.
     exlucde: Optional, pattern syntax for files to exclude.
     """
-    include_files = [path.as_posix() if path.is_file() else None for path in pathlib.Path(path).glob(include)]
+    include_files = []
+    for input_glob in include:
+        include_files.extend(
+            [
+                path.as_posix() if path.is_file() else None
+                for path in pathlib.Path(path).glob(input_glob)
+            ]
+        )
     include_files = list(filter(None, include_files))
+
     if exclude:
-        exclude_files = [path.as_posix() if path.is_file() else None for path in pathlib.Path(path).glob(exclude)]
+        exclude_files = []
+        for exclude_glob in exclude:
+            exclude_files.extend(
+                [
+                    path.as_posix() if path.is_file() else None
+                    for path in pathlib.Path(path).glob(exclude_glob)
+                ]
+            )
+
+        # use sets to remove duplicates and remove all excluded file.
         exclude_files = list(filter(None, exclude_files))
         include_files = list(set(include_files) - set(exclude_files))
     return include_files

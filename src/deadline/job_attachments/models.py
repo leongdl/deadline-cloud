@@ -335,6 +335,7 @@ class FileConflictResolution(Enum):
 @dataclass
 class GlobConfig:
     """Include and Exclude configuration for glob input files"""
+
     include_glob: List[str] = field(default_factory=["**/*"])
     exclude_glob: List[str] = field(default_factory=list)
 

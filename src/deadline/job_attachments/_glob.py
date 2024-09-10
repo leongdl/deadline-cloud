@@ -6,7 +6,7 @@ from deadline.job_attachments.models import GlobConfig
 
 def _process_glob_inputs(glob_arg_input: str) -> GlobConfig:
     """
-    Helper function to process glob inputs. 
+    Helper function to process glob inputs.
     glob_input: String, can represent a json, filepath, or general include glob syntax.
     """
 
@@ -19,7 +19,7 @@ def _process_glob_inputs(glob_arg_input: str) -> GlobConfig:
             # Read the file so it can be parsed as JSON.
             with open(glob_arg_input) as f:
                 glob_arg_input = f.read()
-    except:
+    except Exception:
         # If this cannot be processed as a file, try it as JSON.
         pass
 
@@ -28,7 +28,7 @@ def _process_glob_inputs(glob_arg_input: str) -> GlobConfig:
         input_as_json = json.loads(glob_arg_input)
         glob_config.include_glob = input_as_json.get(GlobConfig.INCLUDE, glob_config.include_glob)
         glob_config.exclude_glob = input_as_json.get(GlobConfig.EXCLUDE, glob_config.exclude_glob)
-    except:
+    except Exception:
         # This is not a JSON blob, bad input.
         raise NonValidInputError(f"Glob input {glob_arg_input} cannot be deserialized as JSON")
 

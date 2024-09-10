@@ -95,7 +95,7 @@ def manifest_snapshot(
 
     inputs = []
     inputs = _glob_paths(root)
-    
+
     # Placeholder Asset Manager
     asset_manager = S3AssetManager(
         farm_id=" ", queue_id=" ", job_attachment_settings=JobAttachmentS3Settings(" ", " ")
@@ -137,7 +137,7 @@ def manifest_snapshot(
         )
         for diff_item in differences:
             if diff_item[0] == FileStatus.MODIFIED or diff_item[0] == FileStatus.NEW:
-                full_diff_path = f"{full_diff_path}/{diff_item[1].path}"
+                full_diff_path = f"{root}/{diff_item[1].path}"
                 changed_paths.append(full_diff_path)
                 logger.echo(f"Found difference at: {full_diff_path}, Status: {diff_item[0]}")
 
@@ -160,7 +160,7 @@ def manifest_snapshot(
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
         manifest_name = name if name else root.replace("/", "_")
-        manifest_name = manifest_name[1:] if manifest_name[0] == '_' else manifest_name
+        manifest_name = manifest_name[1:] if manifest_name[0] == "_" else manifest_name
         manifest_name = f"{manifest_name}-{timestamp}.manifest"
 
         local_manifest_file = Path(destination, manifest_name)
@@ -209,7 +209,8 @@ def manifest_diff(root: str, manifest: str, glob: str, json: bool, **args):
     )
 
     # get inputs of directory
-    input_paths = _glob_paths(root)
+    input_files = _glob_paths(root)
+    input_paths = [Path(p) for p in input_files]
 
     # hash and create manifest of local directory
     cache_config = config_file.get_cache_directory()
@@ -308,7 +309,7 @@ def manifest_download(
     transfer_manager = get_s3_transfer_manager(s3_client=s3_client)
 
     # Capture a list of success and failed to download files for JSON output.
-    successful_downloads: list[tuple[str,str]] = []
+    successful_downloads: list[tuple[str, str]] = []
     failed_downloads: list[str] = []
 
     # download each input_manifest_path
@@ -335,7 +336,7 @@ def manifest_download(
                 f"\nFailed to download file with S3 key '{input_manifest[0]}' from bucket '{bucket_name}'"
             )
             failed_downloads.append(input_manifest[0])
-    
+
     # Now also handle step-step dependencies
     # TODO: Merge manifests by root.
     # TODO: Filter outputs by path
@@ -351,14 +352,11 @@ def manifest_download(
             nextToken=nextToken,
         )
 
-        for step in step_dep_response['dependencies']:
+        for step in step_dep_response["dependencies"]:
             logger.echo(f"Found Step-Step dependency. {step['stepId']}")
 
     # JSON output at the end.
-    output_json = {
-        "downloaded": successful_downloads,
-        "failed": failed_downloads
-    }
+    output_json = {"downloaded": successful_downloads, "failed": failed_downloads}
     logger.json(output_json)
 
 
