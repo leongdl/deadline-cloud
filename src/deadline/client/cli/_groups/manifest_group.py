@@ -257,7 +257,6 @@ def manifest_diff(root: str, manifest: str, glob: str, json: bool, **args):
 @_handle_error
 def manifest_download(
     download_dir: str,
-    profile: str,
     job_id: str,
     step_id: str,
     json: bool,
