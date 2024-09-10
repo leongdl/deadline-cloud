@@ -12,6 +12,9 @@ def _process_glob_inputs(glob_arg_input: str) -> GlobConfig:
 
     # Default Glob config.
     glob_config = GlobConfig()
+    if glob_arg_input is None or len(glob_arg_input) == 0:
+        # Not configured, or not passed in.
+        return glob_config
 
     try:
         input_as_path = Path(glob_arg_input)

@@ -332,11 +332,14 @@ class FileConflictResolution(Enum):
     CREATE_COPY = 3
 
 
+def default_glob_all() -> List[str]:
+    return ["**/*"]
+
+
 @dataclass
 class GlobConfig:
     """Include and Exclude configuration for glob input files"""
-
-    include_glob: List[str] = field(default_factory=["**/*"])
+    include_glob: List[str] = field(default_factory=default_glob_all)
     exclude_glob: List[str] = field(default_factory=list)
 
     INCLUDE = "include"
@@ -345,6 +348,14 @@ class GlobConfig:
 
 @dataclass
 class ManifestDiff:
+    """Data structure to store new, modified, or deleted files when comparing manifest to a local file system"""
     new: List[str] = field(default_factory=list)
     modified: List[str] = field(default_factory=list)
     deleted: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ManifestDownload:
+    """Data structure to store the S3 and local paths of a manifest"""
+    s3: str = field(default_factory=str)
+    local: str = field(default_factory=str)

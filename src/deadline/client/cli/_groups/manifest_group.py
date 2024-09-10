@@ -1,7 +1,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 """
-All the `deadline asset` commands:
+All the `deadline manifest` commands:
     * snapshot
     * upload
     * diff
@@ -27,6 +27,7 @@ from deadline.job_attachments._aws.aws_clients import (
     get_s3_client,
     get_s3_transfer_manager,
 )
+from deadline.job_attachments._glob import _process_glob_inputs
 from deadline.job_attachments._utils import _glob_paths
 from deadline.job_attachments.asset_manifests.base_manifest import (
     BaseAssetManifest,
@@ -38,8 +39,10 @@ from deadline.job_attachments.download import download_file_with_s3_key
 from deadline.job_attachments.models import (
     S3_MANIFEST_FOLDER_NAME,
     AssetRootManifest,
+    GlobConfig,
     JobAttachmentS3Settings,
     ManifestDiff,
+    ManifestDownload,
 )
 from deadline.job_attachments.upload import FileStatus, S3AssetManager
 
@@ -93,8 +96,8 @@ def manifest_snapshot(
         destination = root
         logger.echo(f"Manifest creation path defaulted to {root} \n")
 
-    inputs = []
-    inputs = _glob_paths(root)
+    glob_config: GlobConfig = _process_glob_inputs(glob)
+    inputs = _glob_paths(root, include=glob_config.include_glob, exclude=glob_config.exclude_glob)
 
     # Placeholder Asset Manager
     asset_manager = S3AssetManager(
@@ -209,7 +212,8 @@ def manifest_diff(root: str, manifest: str, glob: str, json: bool, **args):
     )
 
     # get inputs of directory
-    input_files = _glob_paths(root)
+    glob_config: GlobConfig = _process_glob_inputs(glob)
+    input_files = _glob_paths(root, include=glob_config.include_glob, exclude=glob_config.exclude_glob)
     input_paths = [Path(p) for p in input_files]
 
     # hash and create manifest of local directory
@@ -330,7 +334,8 @@ def manifest_download(
 
             logger.echo(f"\nDownloaded manifest file to {local_file_name}.")
             # I don't like this output structure, how can we make it better?
-            successful_downloads.append((input_manifest[0], local_file_name.absolute().as_posix()))
+            download_info = ManifestDownload(s3=input_manifest[0], local=local_file_name.absolute().as_posix())
+            successful_downloads.append(download_info)
         else:
             logger.echo(
                 f"\nFailed to download file with S3 key '{input_manifest[0]}' from bucket '{bucket_name}'"
