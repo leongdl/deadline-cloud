@@ -13,10 +13,12 @@ import concurrent.futures
 import dataclasses
 import datetime
 import glob
+from io import BytesIO
 import logging
 import os
 from pathlib import Path
 from typing import List
+from urllib.parse import urlparse
 
 import boto3
 import click
@@ -44,7 +46,7 @@ from deadline.job_attachments.models import (
     ManifestDiff,
     ManifestDownload,
 )
-from deadline.job_attachments.upload import FileStatus, S3AssetManager
+from deadline.job_attachments.upload import FileStatus, S3AssetManager, S3AssetUploader
 
 from ...config import config_file
 from ...exceptions import NonValidInputError
@@ -213,7 +215,9 @@ def manifest_diff(root: str, manifest: str, glob: str, json: bool, **args):
 
     # get inputs of directory
     glob_config: GlobConfig = _process_glob_inputs(glob)
-    input_files = _glob_paths(root, include=glob_config.include_glob, exclude=glob_config.exclude_glob)
+    input_files = _glob_paths(
+        root, include=glob_config.include_glob, exclude=glob_config.exclude_glob
+    )
     input_paths = [Path(p) for p in input_files]
 
     # hash and create manifest of local directory
@@ -334,7 +338,9 @@ def manifest_download(
 
             logger.echo(f"\nDownloaded manifest file to {local_file_name}.")
             # I don't like this output structure, how can we make it better?
-            download_info = ManifestDownload(s3=input_manifest[0], local=local_file_name.absolute().as_posix())
+            download_info = ManifestDownload(
+                s3=input_manifest[0], local=local_file_name.absolute().as_posix()
+            )
             successful_downloads.append(download_info)
         else:
             logger.echo(
@@ -362,7 +368,92 @@ def manifest_download(
 
     # JSON output at the end.
     output_json = {"downloaded": successful_downloads, "failed": failed_downloads}
-    logger.json(output_json)
+    logger.json(dataclasses.asdict(output_json))
+
+
+@cli_manifest.command(name="upload")
+@click.argument("manifest_file")
+@click.option("--profile", help="The AWS profile to use.")
+@click.option("--cas-path", help="The path to the Content Addressable Storage root.")
+@click.option(
+    "--farm-id", help="The AWS Deadline Cloud Farm to use. Alternative to using --cas-path."
+)
+@click.option(
+    "--queue-id", help="The AWS Deadline Cloud Queue to use. Alternative to using --cas-path."
+)
+@click.option("--json", default=None, is_flag=True, help="Output is printed as JSON for scripting")
+@_handle_error
+def manifest_upload(
+    manifest_file: str,
+    cas_path: str,
+    json: bool,
+    **args,
+):
+    # Input checking.
+    if not manifest_file or not os.path.isfile(manifest_file):
+        raise NonValidInputError(f"Specified manifest {manifest_file} does not exist. ")
+
+    # Where will we upload the manifest to?
+    required: set = {}
+    if not cas_path:
+        required = {"farm_id", "queue_id"}
+
+    config = _apply_cli_options_to_config(required_options=required, **args)
+
+    # Logger
+    logger: ClickLogger = ClickLogger(is_json=json)
+
+    # Upload settings:
+    metadata = {"Metadata": {}}
+    metadata["Metadata"]["file-system-location-name"] = manifest_file
+
+    bucket_name: str = ""
+    manifest_path: str = ""
+    session = api.get_boto3_session()
+    if not cas_path:
+        farm_id = config_file.get_setting("defaults.farm_id", config=config)
+        queue_id = config_file.get_setting("defaults.queue_id", config=config)
+
+        deadline = api.get_boto3_client("deadline", config=config)
+        queue = deadline.get_queue(
+            farmId=farm_id,
+            queueId=queue_id,
+        )
+        bucket_name = queue["jobAttachmentSettings"]["s3BucketName"]
+        manifest_path = queue["jobAttachmentSettings"]["rootPrefix"]
+
+        # IF we supplied a farm and queue, use the queue credentials.
+        session: boto3.Session = api.get_queue_user_boto3_session(
+            deadline=deadline,
+            config=config,
+            farm_id=farm_id,
+            queue_id=queue_id,
+            queue_display_name=queue["displayName"],
+        )
+
+    else:
+        # Self supplied cas path.
+        url_fragments = urlparse(cas_path)
+        bucket_name = url_fragments.netloc
+        manifest_path = url_fragments.path
+
+    logger.echo(f"Uploading Manifest to {bucket_name} {manifest_path}")
+
+    # Always upload the manifest file to case root /Manifest with the original file name.
+    manifest_path = manifest_path + "/Manifests/" + Path(manifest_file).name
+
+    # Uploader
+    upload = S3AssetUploader(session=session)
+    with open(manifest_file) as manifest:
+        upload.upload_bytes_to_s3(
+            bytes=BytesIO(manifest.read().encode("utf-8")),
+            bucket=bucket_name,
+            key=manifest_path,
+            progress_handler=logger.echo,
+            extra_args=metadata,
+        )
+
+    logger.echo("Uploading successful!")
 
 
 def read_local_manifest(manifest: str) -> BaseAssetManifest:

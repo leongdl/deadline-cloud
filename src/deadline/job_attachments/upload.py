@@ -736,7 +736,7 @@ class S3AssetUploader:
                 error_details=str(bce),
             ) from bce
         except Exception as e:
-            raise AssetSyncError(e) from e
+            raise AssetSyncError(e)
 
 
 class S3AssetManager:
