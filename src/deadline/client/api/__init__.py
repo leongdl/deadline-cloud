@@ -4,6 +4,7 @@ __all__ = [
     "login",
     "logout",
     "create_job_from_job_bundle",
+    "_hash_attachments",
     "wait_for_create_job_to_complete",
     "get_boto3_session",
     "get_boto3_client",
@@ -34,6 +35,8 @@ from configparser import ConfigParser
 from logging import getLogger
 from typing import Any, Dict, Optional
 
+from ._job_attachment import _hash_attachments
+
 from ._loginout import login, logout
 from ._session import (
     AwsAuthenticationStatus,
@@ -61,7 +64,10 @@ from ._telemetry import (
     TelemetryClient,
     record_success_fail_telemetry_event,
 )
-from ._submit_job_bundle import create_job_from_job_bundle, wait_for_create_job_to_complete
+from ._submit_job_bundle import (
+    create_job_from_job_bundle,
+    wait_for_create_job_to_complete,
+)
 from ._get_storage_profile_for_queue import get_storage_profile_for_queue
 
 logger = getLogger(__name__)
