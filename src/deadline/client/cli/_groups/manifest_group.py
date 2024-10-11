@@ -11,15 +11,21 @@ from __future__ import annotations
 
 import dataclasses
 import os
-from typing import List
+from typing import Any, List
+from urllib.parse import urlparse
+import boto3
 import click
 
+from deadline.client import api
+from deadline.client.config import config_file
 from deadline.job_attachments.api.manifest import (
+    _manifest_download,
     _manifest_snapshot,
+    _manifest_upload,
 )
 
 from ...exceptions import NonValidInputError
-from .._common import _handle_error
+from .._common import _apply_cli_options_to_config, _handle_error
 from .click_logger import ClickLogger
 
 
@@ -180,7 +186,27 @@ def manifest_download(
     """
     Downloads input manifest of previously submitted job.
     """
-    raise NotImplementedError("This CLI is being implemented.")
+    logger: ClickLogger = ClickLogger(is_json=json)
+    if not os.path.isdir(download_dir):
+        raise NonValidInputError(f"Specified destination directory {download_dir} does not exist. ")
+
+    # setup config
+    config = _apply_cli_options_to_config(required_options={"farm_id", "queue_id"}, **args)
+    queue_id: str = config_file.get_setting("defaults.queue_id", config=config)
+    farm_id: str = config_file.get_setting("defaults.farm_id", config=config)
+
+    boto3_session: boto3.Session = api.get_boto3_session(config=config)
+
+    output = _manifest_download(
+        download_dir=download_dir,
+        farm_id=farm_id,
+        queue_id=queue_id,
+        job_id=job_id,
+        step_id=step_id,
+        boto3_session=boto3_session,
+        logger=logger,
+    )
+    logger.json(dataclasses.asdict(output))
 
 
 @cli_manifest.command(
@@ -204,4 +230,54 @@ def manifest_upload(
     json: bool,
     **args,
 ):
-    raise NotImplementedError("This CLI is being implemented.")
+    # Input checking.
+    if not manifest_file or not os.path.isfile(manifest_file):
+        raise NonValidInputError(f"Specified manifest {manifest_file} does not exist. ")
+
+    # Where will we upload the manifest to?
+    required: set[str] = set()
+    if not s3_cas_path:
+        required = {"farm_id", "queue_id"}
+
+    config = _apply_cli_options_to_config(required_options=required, **args)
+
+    # Logger
+    logger: ClickLogger = ClickLogger(is_json=json)
+
+    # Upload settings:
+    metadata: dict[str, Any] = {"Metadata": {}}
+    metadata["Metadata"]["file-system-location-name"] = manifest_file
+
+    bucket_name: str = ""
+    manifest_path: str = ""
+    session: boto3.Session = api.get_boto3_session(config=config)
+    if not s3_cas_path:
+        farm_id = config_file.get_setting("defaults.farm_id", config=config)
+        queue_id = config_file.get_setting("defaults.queue_id", config=config)
+
+        deadline = api.get_boto3_client("deadline", config=config)
+        queue = deadline.get_queue(
+            farmId=farm_id,
+            queueId=queue_id,
+        )
+        bucket_name = queue["jobAttachmentSettings"]["s3BucketName"]
+        manifest_path = queue["jobAttachmentSettings"]["rootPrefix"]
+
+        # IF we supplied a farm and queue, use the queue credentials.
+        session = api.get_queue_user_boto3_session(
+            deadline=deadline,
+            config=config,
+            farm_id=farm_id,
+            queue_id=queue_id,
+            queue_display_name=queue["displayName"],
+        )
+
+    else:
+        # Self supplied cas path.
+        url_fragments = urlparse(s3_cas_path)
+        bucket_name = url_fragments.netloc
+        manifest_path = url_fragments.path
+
+    logger.echo(f"Uploading Manifest to {bucket_name} {manifest_path}")
+    _manifest_upload(manifest_file, bucket_name, manifest_path, metadata, session, logger)
+    logger.echo("Uploading successful!")
