@@ -545,18 +545,22 @@ class JobBrowserTUI:
                         preview_file_content(self.queue_role_session, self.s3_settings, node)
                     else:
                         self.handle_download(node)
+                    continue
                 elif ch == "i" and items and items[self.cursor].node_type == NodeType.FILE:
                     termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
                     show_file_info(items[self.cursor])
+                    continue
                 elif ch == "v" and items:
                     node = items[self.cursor]
                     if node.node_type == NodeType.FILE and is_image(node.name):
                         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
                         open_image_viewer(self.queue_role_session, self.s3_settings, node)
                         self.message = f"🖼️  Opened {node.name}"
+                        continue
                 elif ch == "m":
                     termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
                     show_manifest_list(self.root)
+                    continue
                 elif ch == "q":
                     console.clear()
                     break
