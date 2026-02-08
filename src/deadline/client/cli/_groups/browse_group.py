@@ -6,7 +6,6 @@ import subprocess
 import sys
 import tempfile
 from configparser import ConfigParser
-from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -15,7 +14,6 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
 from rich.table import Table
-from rich.text import Text
 
 from deadline.client import api
 from deadline.client.api._session import get_default_client_config
@@ -27,12 +25,19 @@ from deadline.job_attachments.models import (
 
 from .._common import _apply_cli_options_to_config, _handle_error
 from .._main import deadline as main
+from ._job_tui._common import (
+    format_size,
+    format_time_ago,
+    get_status_style,
+    render_help_bar,
+)
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp", ".svg"}
 console = Console()
 
 
 # === Constants & Types ===
+
 
 class NodeType(Enum):
     ROOT = "root"
@@ -43,8 +48,15 @@ class NodeType(Enum):
 
 
 class TreeNode:
-    def __init__(self, name: str, node_type: NodeType, path: str = "", size: int = 0,
-                 hash: str = "", parent: "TreeNode" = None):
+    def __init__(
+        self,
+        name: str,
+        node_type: NodeType,
+        path: str = "",
+        size: int = 0,
+        hash: str = "",
+        parent: Optional["TreeNode"] = None,
+    ):
         self.name = name
         self.node_type = node_type
         self.path = path
@@ -55,32 +67,6 @@ class TreeNode:
 
 
 # === Layer 1: Utilities ===
-
-def format_size(size: int) -> str:
-    for unit in ["B", "KB", "MB", "GB"]:
-        if size < 1024:
-            return f"{size:.1f} {unit}"
-        size /= 1024
-    return f"{size:.1f} TB"
-
-
-def format_time_ago(dt) -> str:
-    if not dt:
-        return ""
-    now = datetime.now(timezone.utc)
-    diff = now - dt
-    seconds = diff.total_seconds()
-    if seconds < 60:
-        return "just now"
-    elif seconds < 3600:
-        mins = int(seconds / 60)
-        return f"{mins}m ago"
-    elif seconds < 86400:
-        hrs = int(seconds / 3600)
-        return f"{hrs}h ago"
-    else:
-        days = int(seconds / 86400)
-        return f"{days}d ago"
 
 
 def is_image(filename: str) -> bool:
@@ -98,6 +84,7 @@ def get_all_files_under(node: TreeNode) -> list[TreeNode]:
 
 # === Layer 2: Tree Construction ===
 
+
 def build_file_tree(manifest, root_name: str) -> TreeNode:
     root = TreeNode(name=root_name, node_type=NodeType.MANIFEST_ROOT)
     for mp in manifest.paths:
@@ -111,7 +98,8 @@ def build_file_tree(manifest, root_name: str) -> TreeNode:
             else:
                 node_type = NodeType.FILE if is_file else NodeType.FOLDER
                 new_node = TreeNode(
-                    name=part, node_type=node_type,
+                    name=part,
+                    node_type=node_type,
                     path=mp.path if is_file else "/".join(parts[: i + 1]),
                     size=mp.size if is_file else 0,
                     hash=mp.hash if is_file else "",
@@ -124,8 +112,10 @@ def build_file_tree(manifest, root_name: str) -> TreeNode:
 
 # === Layer 3: Manifest Loading ===
 
+
 def load_input_manifests(job: dict, s3_prefix: str, s3_bucket: str, session) -> list[TreeNode]:
     from deadline.job_attachments.download import get_manifest_from_s3
+
     trees = []
     attachments = job.get("attachments", {})
     for manifest_info in attachments.get("manifests", []):
@@ -134,7 +124,8 @@ def load_input_manifests(job: dict, s3_prefix: str, s3_bucket: str, session) -> 
         if input_path:
             manifest = get_manifest_from_s3(
                 manifest_key=f"{s3_prefix}/{input_path}",
-                s3_bucket=s3_bucket, session=session,
+                s3_bucket=s3_bucket,
+                session=session,
             )
             if manifest:
                 trees.append(build_file_tree(manifest, root_path))
@@ -142,10 +133,18 @@ def load_input_manifests(job: dict, s3_prefix: str, s3_bucket: str, session) -> 
 
 
 def load_output_manifests(s3_settings, farm_id, queue_id, job_id, session) -> list[TreeNode]:
-    from deadline.job_attachments.download import get_output_manifests_by_asset_root, merge_asset_manifests
+    from deadline.job_attachments.download import (
+        get_output_manifests_by_asset_root,
+        merge_asset_manifests,
+    )
+
     trees = []
     output_manifests = get_output_manifests_by_asset_root(
-        s3_settings=s3_settings, farm_id=farm_id, queue_id=queue_id, job_id=job_id, session=session,
+        s3_settings=s3_settings,
+        farm_id=farm_id,
+        queue_id=queue_id,
+        job_id=job_id,
+        session=session,
     )
     for root_path, manifests in output_manifests.items():
         merged = merge_asset_manifests(manifests)
@@ -155,6 +154,7 @@ def load_output_manifests(s3_settings, farm_id, queue_id, job_id, session) -> li
 
 
 # === Layer 4: TUI Rendering ===
+
 
 def get_node_icon(node: TreeNode) -> str:
     if node.node_type == NodeType.FILE:
@@ -173,16 +173,6 @@ def get_node_icon(node: TreeNode) -> str:
     return "📂"
 
 
-def get_status_style(status: str) -> tuple[str, str]:
-    if status == "SUCCEEDED":
-        return "green", "✓"
-    elif status in ("RUNNING", "STARTING", "SCHEDULED", "PENDING"):
-        return "yellow", "●"
-    elif status in ("FAILED", "CANCELED"):
-        return "red", "✗"
-    return "dim", "○"
-
-
 def render_header(title: str, subtitle: str = ""):
     header = Table.grid(padding=1)
     header.add_column(style="bold cyan", justify="left")
@@ -192,8 +182,8 @@ def render_header(title: str, subtitle: str = ""):
 
 
 def render_breadcrumb(current_node: TreeNode):
-    parts = []
-    node = current_node
+    parts: list[str] = []
+    node: Optional[TreeNode] = current_node
     while node:
         parts.insert(0, node.name)
         node = node.parent
@@ -211,20 +201,24 @@ def render_file_list(items: list[TreeNode], cursor: int):
     for i, item in enumerate(items):
         icon = get_node_icon(item)
         is_selected = i == cursor
-        info = format_size(item.size) if item.node_type == NodeType.FILE else f"{len(get_all_files_under(item))} files"
+        info = (
+            format_size(item.size)
+            if item.node_type == NodeType.FILE
+            else f"{len(get_all_files_under(item))} files"
+        )
         if is_selected:
-            table.add_row("[bold cyan]▶[/bold cyan]", f"[bold reverse] {icon} {item.name} [/bold reverse]", f"[bold cyan]{info}[/bold cyan]")
+            table.add_row(
+                "[bold cyan]▶[/bold cyan]",
+                f"[bold reverse] {icon} {item.name} [/bold reverse]",
+                f"[bold cyan]{info}[/bold cyan]",
+            )
         else:
             table.add_row(" ", f"{icon} {item.name}", info)
     console.print(table)
 
 
-def render_help_bar(keys: list[tuple[str, str]]):
-    help_text = "  ".join([f"[bold]{k}[/bold] [dim]{v}[/dim]" for k, v in keys])
-    console.print(Panel(help_text, style="dim", border_style="dim"))
-
-
 # === Layer 5: File Operations ===
+
 
 def download_single_file(queue_role_session, s3_settings, node: TreeNode, dest_dir: str) -> str:
     s3 = queue_role_session.client("s3")
@@ -237,8 +231,13 @@ def download_single_file(queue_role_session, s3_settings, node: TreeNode, dest_d
 def download_folder(queue_role_session, s3_settings, node: TreeNode, dest_dir: str) -> int:
     files = get_all_files_under(node)
     s3 = queue_role_session.client("s3")
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                  BarColumn(), TextColumn("[progress.percentage]{task.percentage:>3.0f}%"), console=console) as progress:
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        console=console,
+    ) as progress:
         task = progress.add_task("Downloading...", total=len(files))
         for f in files:
             local_path = os.path.join(dest_dir, f.path)
@@ -269,10 +268,10 @@ def preview_file_content(queue_role_session, s3_settings, node: TreeNode):
     console.clear()
     console.print(f"[bold cyan]📄 {node.name}[/bold cyan]")
     console.print(f"[dim]Size: {format_size(node.size)} | Hash: {node.hash}[/dim]\n")
-    
+
     # Download to temp
     path = download_single_file(queue_role_session, s3_settings, node, tempfile.gettempdir())
-    
+
     # Preview based on file type
     ext = os.path.splitext(node.name.lower())[1]
     try:
@@ -282,6 +281,7 @@ def preview_file_content(queue_role_session, s3_settings, node: TreeNode):
                 if len(content) == 4000:
                     content += "\n... [truncated]"
             from rich.syntax import Syntax
+
             if ext in {".py", ".sh", ".json", ".yaml", ".yml"}:
                 syntax = Syntax(content, ext[1:], theme="monokai", line_numbers=True)
                 console.print(Panel(syntax, title="Preview", border_style="dim"))
@@ -295,13 +295,13 @@ def preview_file_content(queue_role_session, s3_settings, node: TreeNode):
                 data = f.read(256)
             hex_lines = []
             for i in range(0, len(data), 16):
-                hex_part = " ".join(f"{b:02x}" for b in data[i:i+16])
-                ascii_part = "".join(chr(b) if 32 <= b < 127 else "." for b in data[i:i+16])
+                hex_part = " ".join(f"{b:02x}" for b in data[i : i + 16])
+                ascii_part = "".join(chr(b) if 32 <= b < 127 else "." for b in data[i : i + 16])
                 hex_lines.append(f"{i:04x}  {hex_part:<48}  {ascii_part}")
             console.print(Panel("\n".join(hex_lines), title="Hex Preview", border_style="dim"))
     except Exception as e:
         console.print(f"[red]Could not preview: {e}[/red]")
-    
+
     console.print(f"\n[green]Downloaded to: {path}[/green]")
     console.print("[dim]Press any key to continue...[/dim]")
     click.getchar()
@@ -334,6 +334,7 @@ def show_manifest_list(root: TreeNode):
 
 # === Layer 6: Job Selector ===
 
+
 class JobSelectorTUI:
     PAGE_SIZE = 20
 
@@ -341,7 +342,7 @@ class JobSelectorTUI:
         self.farm_id = farm_id
         self.queue_id = queue_id
         self.deadline = deadline_client
-        self.jobs = []
+        self.jobs: list[dict] = []
         self.cursor = 0
         self.page = 0
         self.total_jobs = 0
@@ -385,22 +386,33 @@ class JobSelectorTUI:
                         f"[bold {color}]{icon} {status}[/bold {color}]",
                         f"[bold reverse] {name} [/bold reverse]",
                         f"[bold cyan]{time_str}[/bold cyan]",
-                        f"[bold cyan]...{short_id}[/bold cyan]"
+                        f"[bold cyan]...{short_id}[/bold cyan]",
                     )
                 else:
-                    table.add_row(" ", f"[{color}]{icon} {status}[/{color}]", name, f"[dim]{time_str}[/dim]", f"[dim]...{short_id}[/dim]")
+                    table.add_row(
+                        " ",
+                        f"[{color}]{icon} {status}[/{color}]",
+                        name,
+                        f"[dim]{time_str}[/dim]",
+                        f"[dim]...{short_id}[/dim]",
+                    )
             console.print(table)
         # Pagination info
         total_pages = (self.total_jobs + self.PAGE_SIZE - 1) // self.PAGE_SIZE
         start = self.page * self.PAGE_SIZE + 1
         end = min(start + len(self.jobs) - 1, self.total_jobs)
-        console.print(f"\n[dim]Page {self.page + 1}/{total_pages} ({start}-{end} of {self.total_jobs} jobs)[/dim]")
+        console.print(
+            f"\n[dim]Page {self.page + 1}/{total_pages} ({start}-{end} of {self.total_jobs} jobs)[/dim]"
+        )
         console.print()
-        render_help_bar([("↑↓", "nav"), ("←→", "page"), ("Enter", "select"), ("r", "refresh"), ("q", "quit")])
+        render_help_bar(
+            [("↑↓", "nav"), ("←→", "page"), ("Enter", "select"), ("r", "refresh"), ("q", "quit")]
+        )
 
     def run(self) -> Optional[str]:
         import termios
         import tty
+
         console.print("[dim]Loading jobs...[/dim]")
         self.load_jobs()
         while True:
@@ -445,9 +457,19 @@ class JobSelectorTUI:
 
 # === Layer 7: File Browser ===
 
+
 class JobBrowserTUI:
-    def __init__(self, farm_id, queue_id, job_id, job_name, job_status,
-                 boto3_session, queue_role_session, s3_settings):
+    def __init__(
+        self,
+        farm_id,
+        queue_id,
+        job_id,
+        job_name,
+        job_status,
+        boto3_session,
+        queue_role_session,
+        s3_settings,
+    ):
         self.farm_id = farm_id
         self.queue_id = queue_id
         self.job_id = job_id
@@ -468,10 +490,14 @@ class JobBrowserTUI:
         output_node = TreeNode(name="output", node_type=NodeType.CATEGORY, parent=self.root)
         self.root.children = [input_node, output_node]
         s3_prefix = f"{self.s3_settings.rootPrefix}/{S3_MANIFEST_FOLDER_NAME}"
-        for tree in load_input_manifests(job, s3_prefix, self.s3_settings.s3BucketName, self.queue_role_session):
+        for tree in load_input_manifests(
+            job, s3_prefix, self.s3_settings.s3BucketName, self.queue_role_session
+        ):
             tree.parent = input_node
             input_node.children.append(tree)
-        for tree in load_output_manifests(self.s3_settings, self.farm_id, self.queue_id, self.job_id, self.queue_role_session):
+        for tree in load_output_manifests(
+            self.s3_settings, self.farm_id, self.queue_id, self.job_id, self.queue_role_session
+        ):
             tree.parent = output_node
             output_node.children.append(tree)
 
@@ -485,7 +511,17 @@ class JobBrowserTUI:
             console.print(f"\n[yellow]{self.message}[/yellow]")
             self.message = ""
         console.print()
-        render_help_bar([("←→↑↓", "nav"), ("Enter", "open"), ("d", "download"), ("i", "info"), ("v", "view"), ("m", "manifests"), ("q", "quit")])
+        render_help_bar(
+            [
+                ("←→↑↓", "nav"),
+                ("Enter", "open"),
+                ("d", "download"),
+                ("i", "info"),
+                ("v", "view"),
+                ("m", "manifests"),
+                ("q", "quit"),
+            ]
+        )
 
     def handle_download(self, node: TreeNode):
         dest = console.input("[bold]Download to:[/bold] ") or os.getcwd()
@@ -500,6 +536,7 @@ class JobBrowserTUI:
     def run(self):
         import termios
         import tty
+
         console.print("[dim]Loading manifests...[/dim]")
         self.load_manifests()
         while True:
@@ -570,11 +607,14 @@ class JobBrowserTUI:
 
 # === Layer 8: CLI Entry Point ===
 
+
 @main.command(name="browse")
 @click.option("--profile", help="The AWS profile to use.")
 @click.option("--farm-id", help="The AWS Deadline Cloud Farm to use.")
 @click.option("--queue-id", help="The AWS Deadline Cloud Queue to use.")
-@click.option("--job-id", help="The AWS Deadline Cloud Job to browse. If omitted, shows job selector.")
+@click.option(
+    "--job-id", help="The AWS Deadline Cloud Job to browse. If omitted, shows job selector."
+)
 @_handle_error
 def cli_browse(**args):
     """
@@ -613,11 +653,21 @@ def cli_browse(**args):
 
     s3_settings = JobAttachmentS3Settings(**queue["jobAttachmentSettings"])
     queue_role_session = api.get_queue_user_boto3_session(
-        deadline=deadline, config=config, farm_id=farm_id, queue_id=queue_id, queue_display_name=queue["displayName"],
+        deadline=deadline,
+        config=config,
+        farm_id=farm_id,
+        queue_id=queue_id,
+        queue_display_name=queue["displayName"],
     )
 
     browser = JobBrowserTUI(
-        farm_id=farm_id, queue_id=queue_id, job_id=job_id, job_name=job_name, job_status=job_status,
-        boto3_session=boto3_session, queue_role_session=queue_role_session, s3_settings=s3_settings,
+        farm_id=farm_id,
+        queue_id=queue_id,
+        job_id=job_id,
+        job_name=job_name,
+        job_status=job_status,
+        boto3_session=boto3_session,
+        queue_role_session=queue_role_session,
+        s3_settings=s3_settings,
     )
     browser.run()
