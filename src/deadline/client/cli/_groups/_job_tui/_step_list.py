@@ -15,6 +15,7 @@ from ._common import (
     get_lifecycle_badge,
     get_status_style,
     get_terminal_page_size,
+    open_feedback_url,
     read_key,
     render_header,
     render_help_bar,
@@ -46,6 +47,7 @@ class StepListTUI:
         self.prev_tokens: list[Optional[str]] = []
         self.page: int = 0
         self.message: str = ""
+        self._needs_full_clear: bool = True
 
     def load_page(self) -> None:
         """Fetch one page of steps via list_steps."""
@@ -64,7 +66,8 @@ class StepListTUI:
 
     def render(self) -> None:
         """Render step list with status, target badge, lifecycle badge, name, task count, ID."""
-        clear_screen()
+        clear_screen(full=self._needs_full_clear)
+        self._needs_full_clear = False
         color, icon = get_status_style(self.job_status)
         render_header(self.job_name, f"[{color}]{icon} {self.job_status}[/{color}]")
         console.print("[dim]📍 Steps[/dim]\n")
@@ -96,6 +99,7 @@ class StepListTUI:
                 ("c", "copy id"),
                 ("n/p", "page"),
                 ("r", "refresh"),
+                ("f", "feedback"),
                 ("q", "quit"),
             ]
         )
@@ -146,6 +150,7 @@ class StepListTUI:
 
     def run(self) -> Optional[tuple[str, ...]]:
         """Main loop. Returns ('select', step_id, step_name), ('back', ''), or None."""
+        self._needs_full_clear = True
         self.prev_tokens = [None]
         self.load_page()
 
@@ -196,6 +201,8 @@ class StepListTUI:
                 self.page = 0
                 self.cursor = 0
                 self.load_page()
+            elif key == "f":
+                self.message = open_feedback_url()
             elif key == "q":
                 clear_screen()
                 return None

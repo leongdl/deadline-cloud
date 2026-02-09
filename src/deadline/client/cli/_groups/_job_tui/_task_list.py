@@ -14,6 +14,7 @@ from ._common import (
     format_short_id,
     get_status_style,
     get_terminal_page_size,
+    open_feedback_url,
     read_key,
     render_header,
     render_help_bar,
@@ -47,6 +48,7 @@ class TaskListTUI:
         self.prev_tokens: list[Optional[str]] = []
         self.page: int = 0
         self.message: str = ""
+        self._needs_full_clear: bool = True
 
     def load_page(self) -> None:
         """Fetch one page of tasks via list_tasks."""
@@ -79,7 +81,8 @@ class TaskListTUI:
 
     def render(self) -> None:
         """Render task list with status, target badge, params, ID."""
-        clear_screen()
+        clear_screen(full=self._needs_full_clear)
+        self._needs_full_clear = False
         render_header(
             f"{self.job_name} › {self.step_name}",
             "",
@@ -113,6 +116,7 @@ class TaskListTUI:
                 ("c", "copy id"),
                 ("n/p", "page"),
                 ("r", "refresh"),
+                ("f", "feedback"),
                 ("q", "quit"),
             ]
         )
@@ -148,6 +152,7 @@ class TaskListTUI:
 
     def run(self) -> Optional[tuple[str, str]]:
         """Main loop. Returns ('sessions', task_id), ('attachments', task_id), ('back', ''), or None."""
+        self._needs_full_clear = True
         self.prev_tokens = [None]
         self.load_page()
 
@@ -200,6 +205,8 @@ class TaskListTUI:
                 self.page = 0
                 self.cursor = 0
                 self.load_page()
+            elif key == "f":
+                self.message = open_feedback_url()
             elif key == "q":
                 clear_screen()
                 return None

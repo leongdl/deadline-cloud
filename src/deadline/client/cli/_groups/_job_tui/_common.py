@@ -113,6 +113,21 @@ def copy_to_clipboard(text: str) -> bool:
         return False
 
 
+FEEDBACK_URL = "https://github.com/aws-deadline/deadline-cloud/issues"
+
+
+def open_feedback_url() -> str:
+    """Try to open the feedback URL in a browser. Returns a status message."""
+    import webbrowser
+
+    try:
+        if webbrowser.open(FEEDBACK_URL):
+            return f"🌐 Opened {FEEDBACK_URL}"
+    except Exception:
+        pass
+    return f"💬 Please provide feedback at {FEEDBACK_URL}"
+
+
 def enter_alt_screen() -> None:
     """Switch to alternate screen buffer and hide cursor."""
     sys.stdout.write("\033[?1049h\033[?25l")
@@ -125,20 +140,21 @@ def leave_alt_screen() -> None:
     sys.stdout.flush()
 
 
-def clear_screen() -> None:
-    """Move cursor to home without erasing. Content is overwritten in-place to avoid flash."""
-    sys.stdout.write("\033[H")
-    sys.stdout.flush()
+def clear_screen(full: bool = False) -> None:
+    """Move cursor to home position, optionally erasing the screen.
 
-
-def finish_render() -> None:
-    """Erase from current cursor to end of screen.
-
-    Call this after all render output to clean up any leftover lines
-    from a previous longer render.  The cursor stays hidden to avoid
-    flicker between frames — it is restored by leave_alt_screen().
+    Args:
+        full: When True, erase the entire screen after homing the cursor.
+              Use this when transitioning between different screens
+              (e.g. job list → step list) to avoid stale content.
+              When False (default), only homes the cursor so content is
+              overwritten in-place — avoids flicker during same-screen
+              scrolling.
     """
-    sys.stdout.write("\033[J")
+    if full:
+        sys.stdout.write("\033[H\033[2J")
+    else:
+        sys.stdout.write("\033[H")
     sys.stdout.flush()
 
 
@@ -159,17 +175,24 @@ def render_header(title: str, subtitle: str = "") -> None:
 
 
 def render_help_bar(keys: list[tuple[str, str]]) -> None:
-    """Render keyboard shortcut help panel and clean up leftover lines."""
+    """Render keyboard shortcut help panel, then erase any stale lines below.
+
+    The erase-below (\\033[J) after the panel cleans up leftover content
+    from a previous longer frame (e.g. navigating from a long job list
+    to a shorter step list) without needing a full-screen erase in
+    clear_screen() which would cause visible flicker.
+    """
     help_text = "  ".join([f"[bold]{k}[/bold] [dim]{v}[/dim]" for k, v in keys])
     console.print(Panel(help_text, style="dim", border_style="dim", width=console.width - 1))
-    finish_render()
+    sys.stdout.write("\033[J")
+    sys.stdout.flush()
 
 
 def read_key() -> str:
     """Read a single keypress, returning normalized key name.
 
     Returns one of: 'up', 'down', 'left', 'right', 'esc', 'enter',
-    or the character pressed (e.g. 'q', 'j', 'J', 'c', 'n', 'p', 'r', 'l').
+    or the character pressed (e.g. 'q', 'j', 'c', 'n', 'p', 'r', 'l').
     """
     import termios
     import tty
@@ -180,7 +203,6 @@ def read_key() -> str:
         tty.setraw(fd)
         ch = sys.stdin.read(1)
         if ch == "\x1b":
-            # Could be an escape sequence or just Esc key
             ch2 = sys.stdin.read(1)
             if ch2 == "[":
                 ch3 = sys.stdin.read(1)

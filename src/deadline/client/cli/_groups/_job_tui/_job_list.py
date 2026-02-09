@@ -15,6 +15,7 @@ from ._common import (
     format_time_ago,
     get_status_style,
     get_terminal_page_size,
+    open_feedback_url,
     read_key,
     render_header,
     render_help_bar,
@@ -34,6 +35,7 @@ class JobListTUI:
         self.page: int = 0
         self.total_jobs: int = 0
         self.message: str = ""
+        self._needs_full_clear: bool = True
 
     def load_page(self) -> None:
         """Fetch one page of jobs via search_jobs."""
@@ -49,7 +51,8 @@ class JobListTUI:
 
     def render(self) -> None:
         """Render job list with status, target badge, name, time, short ID."""
-        clear_screen()
+        clear_screen(full=self._needs_full_clear)
+        self._needs_full_clear = False
         render_header("Jobs", f"Queue: {format_short_id(self.queue_id)}")
         console.print()
 
@@ -88,6 +91,7 @@ class JobListTUI:
                 ("c", "copy id"),
                 ("n/p", "page"),
                 ("r", "refresh"),
+                ("f", "feedback"),
                 ("q", "quit"),
             ]
         )
@@ -128,6 +132,7 @@ class JobListTUI:
 
     def run(self) -> Optional[tuple[str, str]]:
         """Main loop. Returns ('select', job_id), ('attachments', job_id), or None."""
+        self._needs_full_clear = True
         self.load_page()
 
         while True:
@@ -178,6 +183,8 @@ class JobListTUI:
             elif key == "r":
                 self.load_page()
                 self.cursor = 0
+            elif key == "f":
+                self.message = open_feedback_url()
             elif key == "q":
                 clear_screen()
                 return None

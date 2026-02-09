@@ -14,6 +14,7 @@ from ._common import (
     format_short_id,
     format_time_ago,
     get_status_style,
+    open_feedback_url,
     read_key,
     render_header,
     render_help_bar,
@@ -43,6 +44,7 @@ class SessionListTUI:
         self.sessions: list[dict] = []
         self.cursor: int = 0
         self.message: str = ""
+        self._needs_full_clear: bool = True
 
     def load_sessions(self) -> None:
         """Load sessions for this job, then filter to those that ran this task's step+task."""
@@ -90,7 +92,8 @@ class SessionListTUI:
 
     def render(self) -> None:
         """Render session list."""
-        clear_screen()
+        clear_screen(full=self._needs_full_clear)
+        self._needs_full_clear = False
         render_header(f"Sessions for {self.task_label}", "")
         console.print()
 
@@ -117,6 +120,7 @@ class SessionListTUI:
             [
                 ("↑↓", "nav"),
                 ("c", "copy id"),
+                ("f", "feedback"),
                 ("Esc", "back"),
                 ("q", "quit"),
             ]
@@ -170,6 +174,8 @@ class SessionListTUI:
                     self.message = f"📋 {session_id}"
             elif key in ("esc", "left"):
                 return
+            elif key == "f":
+                self.message = open_feedback_url()
             elif key == "q":
                 clear_screen()
                 return

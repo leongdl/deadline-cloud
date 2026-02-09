@@ -13,6 +13,7 @@ from ._common import (
     clear_screen,
     console,
     get_status_style,
+    open_feedback_url,
     read_key,
     render_header,
     render_help_bar,
@@ -72,6 +73,7 @@ class AttachmentBrowserTUI:
         self.current_node = self.root
         self.cursor: int = 0
         self.message: str = ""
+        self._needs_full_clear: bool = True
 
     def load_manifests(self) -> None:
         """Load input and output manifests into tree structure."""
@@ -104,7 +106,8 @@ class AttachmentBrowserTUI:
 
     def render(self) -> None:
         """Render the file tree browser."""
-        clear_screen()
+        clear_screen(full=self._needs_full_clear)
+        self._needs_full_clear = False
         color, icon = get_status_style(self.job_status)
         render_header(self.job_name, f"[{color}]{icon} {self.job_status}[/{color}]")
         render_breadcrumb(self.current_node)
@@ -123,6 +126,7 @@ class AttachmentBrowserTUI:
                 ("i", "info"),
                 ("v", "view"),
                 ("m", "manifests"),
+                ("f", "feedback"),
                 ("Esc", "back"),
                 ("q", "quit"),
             ]
@@ -183,6 +187,8 @@ class AttachmentBrowserTUI:
                     self.message = f"🖼️  Opened {node.name}"
             elif key == "m":
                 show_manifest_list(self.root)
+            elif key == "f":
+                self.message = open_feedback_url()
             elif key == "q":
                 clear_screen()
                 return
