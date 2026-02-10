@@ -520,6 +520,67 @@ def job_tui(**args):
     """
 ```
 
+## Screen Rendering & Clearing
+
+The TUI uses a two-mode screen clearing strategy to balance flicker-free rendering with clean screen transitions.
+
+### The Problem
+
+Terminal UIs face a tradeoff: erasing the entire screen before each frame prevents stale content but causes visible flicker. Only repositioning the cursor and overwriting in-place eliminates flicker but leaves stale lines when transitioning between screens of different lengths (e.g. a 50-job list → a 3-step list leaves 47 ghost lines).
+
+### Two-Mode Approach
+
+`clear_screen(full)` in `_common.py` implements both modes:
+
+- **Soft clear** (`full=False`): Writes `\033[H` (cursor home) only. Content overwrites in-place with zero flicker. Used for same-screen re-renders (scrolling, cursor movement, page changes within the same list).
+- **Hard clear** (`full=True`): Writes `\033[H\033[2J` (cursor home + erase entire screen). Used when transitioning between different screens (job list → step list, step list → task list, back navigation) to prevent stale content from the previous screen bleeding through.
+
+### The `_needs_full_clear` Flag
+
+Each TUI class (`JobListTUI`, `StepListTUI`, `TaskListTUI`, `SessionListTUI`, `AttachmentBrowserTUI`) manages a `_needs_full_clear: bool` instance flag:
+
+1. Set to `True` in `__init__()` (initial construction).
+2. Set to `True` at the top of `run()` (re-entering the screen after returning from a child screen).
+3. Passed to `clear_screen(full=self._needs_full_clear)` at the start of `render()`.
+4. Immediately set to `False` after the `clear_screen()` call in `render()`, so subsequent frames within the same screen use soft clear.
+
+```python
+# Pattern used in every TUI class:
+def render(self) -> None:
+    clear_screen(full=self._needs_full_clear)
+    self._needs_full_clear = False
+    # ... render content ...
+
+def run(self) -> ...:
+    self._needs_full_clear = True  # hard clear on first frame
+    self.load_page()
+    while True:
+        self.render()  # first call uses hard clear, rest use soft clear
+        key = read_key()
+        # ... handle input ...
+```
+
+### Attachment Browser Folder Navigation
+
+The `AttachmentBrowserTUI` applies the same two-mode clearing to folder transitions within the file tree. When the user navigates into a subfolder (`→`/`Enter` on a non-file node) or back out (`←` to parent), `_needs_full_clear` is set to `True` before the next render. This prevents stale file listings from a longer folder bleeding through when entering a shorter folder — the same class of bug that screen transitions between TUI screens solve.
+
+Scrolling within the same folder (↑/↓) continues to use soft clear for flicker-free rendering.
+
+### Erase-Below in Help Bar
+
+`render_help_bar()` writes `\033[J` (erase from cursor to end of screen) after rendering the help panel. This cleans up leftover lines from a previous longer frame without requiring a full-screen erase — for example, when the current page has fewer items than the previous page on the same screen.
+
+### Terminal Width Constraint
+
+All `Panel` and `Table` widgets are constrained to `width=console.width - 1` to prevent terminal line wrapping, which would cause rendering artifacts and misaligned content.
+
+### Cursor Hiding & Alternate Screen Buffer
+
+- `enter_alt_screen()` switches to the terminal's alternate screen buffer and hides the cursor (`\033[?1049h\033[?25l`). This preserves the user's scrollback history and prevents a blinking cursor from distracting during TUI operation.
+- `leave_alt_screen()` restores the cursor and returns to the main screen buffer (`\033[?25h\033[?1049l`).
+
+These are called by the top-level orchestrator in `job_group.py` around the entire TUI session, not by individual screens.
+
 ### Function Size Limits
 
 All functions must be ≤75 lines. Complex logic should be split:

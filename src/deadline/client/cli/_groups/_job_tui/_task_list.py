@@ -165,6 +165,7 @@ class TaskListTUI:
                     self.cursor -= 1
                 elif self.page > 0:
                     self.page -= 1
+                    self._needs_full_clear = True
                     self.load_page()
                     self.cursor = max(0, len(self.tasks) - 1)
             elif key == "down":
@@ -172,6 +173,7 @@ class TaskListTUI:
                     self.cursor += 1
                 elif self.tasks and self.next_token:
                     self.page += 1
+                    self._needs_full_clear = True
                     if self.page >= len(self.prev_tokens):
                         self.prev_tokens.append(self.next_token)
                     self.cursor = 0
@@ -192,15 +194,18 @@ class TaskListTUI:
                     self.message = f"📋 {task_id}"
             elif key == "n" and self.next_token:
                 self.page += 1
+                self._needs_full_clear = True
                 if self.page >= len(self.prev_tokens):
                     self.prev_tokens.append(self.next_token)
                 self.cursor = 0
                 self.load_page()
             elif key == "p" and self.page > 0:
                 self.page -= 1
+                self._needs_full_clear = True
                 self.cursor = 0
                 self.load_page()
             elif key == "r":
+                self._needs_full_clear = True
                 self.prev_tokens = [None]
                 self.page = 0
                 self.cursor = 0

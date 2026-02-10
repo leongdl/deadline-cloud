@@ -5,7 +5,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
+pytest.importorskip("rich", reason="TUI tests require the 'rich' package (deadline[tui])")
+
+from unittest.mock import patch
+
 from deadline.client.cli._groups._job_tui._common import (
+    clear_screen,
     format_short_id,
     format_size,
     format_time_ago,
@@ -154,3 +161,27 @@ class TestGetLifecycleBadge:
 
     def test_unknown(self):
         assert get_lifecycle_badge("UNKNOWN") is None
+
+
+class TestClearScreen:
+    """Tests for the two-mode clear_screen function."""
+
+    @patch("deadline.client.cli._groups._job_tui._common.sys")
+    def test_soft_clear_writes_cursor_home_only(self, mock_sys):
+        """Soft clear (full=False) should only write cursor-home escape."""
+        clear_screen(full=False)
+        mock_sys.stdout.write.assert_called_once_with("\033[H")
+        mock_sys.stdout.flush.assert_called_once()
+
+    @patch("deadline.client.cli._groups._job_tui._common.sys")
+    def test_hard_clear_writes_cursor_home_and_erase(self, mock_sys):
+        """Hard clear (full=True) should write cursor-home + erase-screen."""
+        clear_screen(full=True)
+        mock_sys.stdout.write.assert_called_once_with("\033[H\033[2J")
+        mock_sys.stdout.flush.assert_called_once()
+
+    @patch("deadline.client.cli._groups._job_tui._common.sys")
+    def test_default_is_soft_clear(self, mock_sys):
+        """Default call with no args should be soft clear."""
+        clear_screen()
+        mock_sys.stdout.write.assert_called_once_with("\033[H")

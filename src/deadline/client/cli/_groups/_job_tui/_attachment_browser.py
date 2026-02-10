@@ -19,8 +19,8 @@ from ._common import (
     render_help_bar,
 )
 
-# Import tree/manifest types and functions from existing browse_group
-from ..browse_group import (
+# Import tree/manifest types and functions from _browse_tui
+from .._browse_tui import (
     NodeType,
     TreeNode,
     download_folder,
@@ -161,6 +161,7 @@ class AttachmentBrowserTUI:
                 if self.current_node.parent:
                     self.current_node = self.current_node.parent
                     self.cursor = 0
+                    self._needs_full_clear = True
                 else:
                     return  # At root, go back
             elif key == "esc":
@@ -172,6 +173,7 @@ class AttachmentBrowserTUI:
                 else:
                     self.current_node = node
                     self.cursor = 0
+                    self._needs_full_clear = True
             elif key == "d" and items:
                 node = items[self.cursor]
                 if node.node_type == NodeType.FILE:

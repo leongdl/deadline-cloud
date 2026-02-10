@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytest.importorskip("rich", reason="TUI tests require the 'rich' package (deadline[tui])")
+
 from deadline.client.cli._groups._job_tui._session_list import SessionListTUI
 
 

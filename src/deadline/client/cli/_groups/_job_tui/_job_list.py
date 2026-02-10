@@ -145,6 +145,7 @@ class JobListTUI:
                 elif self.page > 0:
                     # Wrap to previous page, cursor at bottom
                     self.page -= 1
+                    self._needs_full_clear = True
                     self.load_page()
                     self.cursor = max(0, len(self.jobs) - 1)
             elif key == "down":
@@ -155,6 +156,7 @@ class JobListTUI:
                     total_pages = max(1, (self.total_jobs + self.page_size - 1) // self.page_size)
                     if self.page < total_pages - 1:
                         self.page += 1
+                        self._needs_full_clear = True
                         self.cursor = 0
                         self.load_page()
             elif key in ("right", "enter") and self.jobs:
@@ -173,14 +175,17 @@ class JobListTUI:
                 total_pages = max(1, (self.total_jobs + self.page_size - 1) // self.page_size)
                 if self.page < total_pages - 1:
                     self.page += 1
+                    self._needs_full_clear = True
                     self.cursor = 0
                     self.load_page()
             elif key == "p":
                 if self.page > 0:
                     self.page -= 1
+                    self._needs_full_clear = True
                     self.cursor = 0
                     self.load_page()
             elif key == "r":
+                self._needs_full_clear = True
                 self.load_page()
                 self.cursor = 0
             elif key == "f":

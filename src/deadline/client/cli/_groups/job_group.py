@@ -1997,7 +1997,12 @@ def job_tui(**args):
     Navigate with arrow keys: ↑/↓ to browse lists, →/← to drill in/out of the
     job → step → task hierarchy. Press a for job attachments, j for task attachments,
     l for sessions, c to copy IDs, n/p for pagination, q to quit.
+
+    Requires the [tui] extra: pip install 'deadline[tui]'
     """
+    from .browse_group import _check_tui_installed
+
+    _check_tui_installed()
     from ._job_tui._common import enter_alt_screen, leave_alt_screen
 
     if not sys.stdin.isatty():
